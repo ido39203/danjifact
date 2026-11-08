@@ -178,7 +178,9 @@ dialog h3:first-child{margin-top:0;padding-top:0;border-top:0}
     <label for="aiKey">API 키</label>
     <input type="password" id="aiKey" autocomplete="off">
     <label class="check"><input type="checkbox" id="aiSave"> 이 브라우저에 저장 (체크하지 않으면 새로고침 때 지워짐)</label>
+    <p class="small" style="margin:6px 0 0">키가 없으면 Google AI Studio(aistudio.google.com)에서 Google 계정으로 무료 키를 만든다. 무료 키로 보낸 글과 응답은 Google이 제품 개선에 쓰고 검토자가 읽을 수 있어, 이 화면은 개인정보를 가린 글만 보낸다. 키 없이도 시연용 후기가 있는 단지에서 '시연용 후기 불러오기'로 미리 받아 둔 분석 결과를 볼 수 있다.</p>
     <h3>지도</h3>
+    <p class="small" id="kkNote" style="margin:4px 0 0"></p>
     <label for="kkKey">카카오 JavaScript 키</label>
     <input type="password" id="kkKey" autocomplete="off">
     <label class="check"><input type="checkbox" id="kkSave"> 이 브라우저에 저장</label>
@@ -208,11 +210,20 @@ window.DANJI_SAMPLE={meta:{sido:'예시',gu:'예시구',feePeriod:['202601','202
 <script>
 (function(){
 'use strict';
+/* ================= 배포 설정 =================
+   카카오 JavaScript 키는 브라우저에서 쓰라고 만든 공개용 키라 코드에 넣는다.
+   카카오 개발자 콘솔의 JavaScript SDK 도메인에 등록한 주소(배포 주소, file://)에서만 지도가 뜬다.
+   같은 앱의 REST API 키·Admin 키는 넣지 않는다.
+   AI(Gemini·Claude) 키는 비밀 키라 코드에 넣지 않고, 방문자가 키 설정에서 자기 키를 넣는다. */
+var KAKAO_JS_KEY='0201fa353a73db4e8e87474d03109ee2';   // 따옴표 사이에 카카오 JavaScript 키(32자)를 붙여넣는다
+
 /* ================= 공통 ================= */
 var $=function(id){return document.getElementById(id)};
 var LS={reviews:'danjifact:reviews',aiProv:'danjifact:aiProvider',aiModel:'danjifact:aiModel',aiKey:'danjifact:aiKey',kakao:'danjifact:kakaoJsKey'};
 function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
 function lsSet(k,v){try{ if(v==null||v==='') localStorage.removeItem(k); else localStorage.setItem(k,v); return true;}catch(e){return false}}
+function ssGet(k){try{return sessionStorage.getItem(k)}catch(e){return null}}
+function ssSet(k,v){try{ if(v==null||v==='') sessionStorage.removeItem(k); else sessionStorage.setItem(k,v);}catch(e){}}
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function fmt(n,d){ if(n==null||!isFinite(n)) return null; return Number(n).toLocaleString('ko-KR',{maximumFractionDigits:d||0,minimumFractionDigits:d||0}); }
 var ICON={pin:'<svg class="i" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>'};
@@ -304,8 +315,17 @@ $('list').addEventListener('click',function(e){ var b=e.target.closest('button[d
 
 /* ================= 지도 ================= */
 var map=null, kakaoP=null, pins={}, label=null;
-function kakaoKey(){ return memKeys.kakao||lsGet(LS.kakao)||''; }
+/* 11/08: 방문자가 넣은 키가 있으면 그 키, 없으면 코드의 기본 키(KAKAO_JS_KEY) */
+function userKakaoKey(){ return memKeys.kakao||ssGet(LS.kakao)||lsGet(LS.kakao)||''; }
+function kakaoKey(){ return userKakaoKey()||KAKAO_JS_KEY; }
 function mapMsg(html){ var m=$('mapMsg'); m.hidden=!html; m.innerHTML=html||''; }
+function mapFailMsg(){
+  var setBtn='<button type="button" class="ghost" data-open-set>키 설정</button>';
+  if(userKakaoKey()) return '<div>지도를 불러오지 못했다. 키 설정에 넣은 카카오 키와, 그 키를 만든 앱의 JavaScript SDK 도메인에 지금 주소가 있는지 확인한다.'+(KAKAO_JS_KEY?' 칸을 비우고 저장하면 기본 키로 돌아간다.':'')+'</div>'+setBtn;
+  var here=location.protocol==='file:'?'file://':location.origin;
+  var bad=!/^[0-9a-f]{32}$/i.test(KAKAO_JS_KEY)?' 코드의 KAKAO_JS_KEY가 32자 키 모양이 아니다(지금 '+KAKAO_JS_KEY.length+'자).':'';
+  return '<div>지도를 불러오지 못했다. 인터넷 연결을 확인하고 새로고침한다.</div><div class="small">개발자 확인: 카카오 콘솔 JavaScript SDK 도메인에 '+esc(here)+' 등록 여부.'+esc(bad)+'</div>';
+}
 function initMap(){
   var key=kakaoKey();
   if(!key){ mapMsg('<div>카카오 JavaScript 키를 넣으면 지도가 나온다.</div><button type="button" class="ghost" data-open-set>키 설정</button>'); return; }
@@ -319,7 +339,7 @@ function initMap(){
       document.head.appendChild(s);
     });
   }
-  kakaoP.then(drawMap).catch(function(){ mapMsg('<div>지도를 불러오지 못했다. 키와 카카오 콘솔의 JavaScript SDK 도메인(file://, 배포 주소)을 확인한다.</div><button type="button" class="ghost" data-open-set>키 설정</button>'); });
+  kakaoP.then(drawMap).catch(function(){ mapMsg(mapFailMsg()); });
 }
 function drawMap(k){
   var pts=CX.filter(function(c){return c.lat!=null&&c.lng!=null});
@@ -352,7 +372,7 @@ function select(code,fromList){
 }
 function yearOf(d){ d=String(d||''); return d.length>=4?d.slice(0,4)+'년':null; }
 function renderDetail(){
-  var c=BY[ui.sel]; if(!c){ $('detail').innerHTML='<p class="empty">왼쪽 목록이나 지도에서 단지를 고른다.</p>'; return; }
+  var c=BY[ui.sel]; if(!c){ $('detail').innerHTML=emptyHtml(); return; }
   var pr=dataRating('parking',c), fr=dataRating('fee',c);
   var html='';
   html+='<h1 class="cx">'+esc(c.name)+'</h1><p class="addr">'+ICON.pin+' '+esc(c.address||c.jibun||'주소 없음')+'</p>';
@@ -375,6 +395,14 @@ function renderDetail(){
   html+=renderReviews(c,pr,fr);
   $('detail').innerHTML=html;
   bindDetail(c);
+}
+/* 11/08: 처음 온 사람이 224곳 중 시연용 후기가 있는 단지를 바로 찾도록 첫 화면에 보여 줌 */
+function emptyHtml(){
+  var codes=Object.keys(DEMO).filter(function(k){return BY[k]&&DEMO[k]&&DEMO[k].length}).sort(function(a,b){return BY[a].name.localeCompare(BY[b].name,'ko')});
+  var h='<p class="empty">왼쪽 목록이나 지도에서 단지를 고른다.</p>';
+  if(!codes.length) return h;
+  return h+'<section class="card"><h2>키 없이 둘러보기</h2><p class="small" style="margin:0">아래 단지에는 시연용 후기와 미리 받아 둔 AI 분석 결과가 있다. 단지를 고른 뒤 \'시연용 후기 불러오기\'를 누르면 후기-데이터 판정을 볼 수 있다.</p>'+
+    '<div class="actions">'+codes.map(function(k){return '<button type="button" class="ghost" data-demo-go="'+esc(k)+'">'+esc(BY[k].name)+' · 후기 '+DEMO[k].length+'건</button>'}).join('')+'</div></section>';
 }
 function fact(k,v,s){ return '<div><div class="k">'+esc(k)+'</div><div class="v">'+(v==null?'<span class="nodata">데이터 없음</span>':esc(v))+'</div><div class="s">'+esc(s||'')+'</div></div>'; }
 function rangeText(){ return (ui.feeRange==='total'?'총액(공용+개별)':'공용관리비')+' · '+({all:'전체 달 평균',winter:'겨울(1·2월)',summer:'여름(6~8월)'}[ui.feeSeason]); }
@@ -518,6 +546,7 @@ function bindDetail(c){
 }
 $('detail').addEventListener('click',function(e){
   var t=e.target.closest('button'); if(!t) return;
+  if(t.dataset.demoGo){ select(t.dataset.demoGo,false); return; }
   if(t.dataset.seg){ ui[t.dataset.seg]=t.dataset.v; renderDetail(); return; }
   if(t.dataset.del){
     if(!confirm('이 후기를 보관함에서 지운다.')) return;
@@ -658,7 +687,9 @@ function analyze(id){
 function openSettings(msg){
   var conf=aiConf();
   $('aiProv').value=conf.prov; $('aiModel').value=conf.model; $('aiKey').value=conf.key; $('aiSave').checked=!!lsGet(LS.aiKey);
-  $('kkKey').value=kakaoKey(); $('kkSave').checked=!!lsGet(LS.kakao);
+  $('kkKey').value=userKakaoKey(); $('kkSave').checked=!!lsGet(LS.kakao);
+  $('kkKey').placeholder=KAKAO_JS_KEY?'비워 두면 기본 키 사용':'';
+  $('kkNote').textContent=KAKAO_JS_KEY?'이 사이트에는 기본 키가 들어 있어 지도는 키 없이 나온다. 다른 카카오 앱의 키를 쓸 때만 넣는다(칸을 비우고 저장하면 기본 키로 돌아감).':'카카오 JavaScript 키를 넣으면 지도가 나온다.';
   $('setMsg').textContent=msg||''; delete $('setMsg').dataset.confirmed; $('setDlg').showModal();
 }
 $('aiProv').addEventListener('change',function(){ $('aiModel').value=DEFAULT_MODEL[$('aiProv').value]; });
@@ -690,10 +721,13 @@ $('setSave').addEventListener('click',function(){
   delete $('setMsg').dataset.confirmed;
   lsSet(LS.aiProv,prov); lsSet(LS.aiModel,$('aiModel').value.trim()||DEFAULT_MODEL[prov]);
   memKeys.ai=key; lsSet(LS.aiKey,$('aiSave').checked?key:null);
-  var changed=kk!==kakaoKey();
+  var before=kakaoKey();
   memKeys.kakao=kk; lsSet(LS.kakao,$('kkSave').checked?kk:null);
+  ssSet(LS.kakao,$('kkSave').checked?null:kk);   // 저장하지 않은 키도 지도를 다시 불러오는 새로고침 뒤 이 탭에서는 유지
+  var after=kakaoKey();
   $('setDlg').close();
-  if(changed){ if(map){ location.reload(); return; } kakaoP=null; initMap(); }
+  // 카카오 SDK는 한 페이지에서 키를 바꿔 다시 불러올 수 없어 새로고침
+  if(before!==after){ if(map||window.kakao){ location.reload(); return; } kakaoP=null; initMap(); }
 });
 document.addEventListener('click',function(e){
   if(e.target.closest('[data-open-set]')) openSettings();
@@ -732,7 +766,7 @@ function flash(t){ var b=$('banner'); b.hidden=false; b.textContent=t; clearTime
 /* ================= 시작 ================= */
 $('region').textContent=(DATA.meta.sido&&!IS_SAMPLE?DATA.meta.sido+' ':'')+GU+' · 단지 '+CX.length+'곳';
 if(IS_SAMPLE){ var b=$('banner'); b.hidden=false; b.textContent='data.js가 없어 예시 데이터로 보여 준다(실제 단지 아님). collect.html로 data.js를 만들어 이 파일 옆에 둔다.'; }
-renderList(); initMap();
+renderList(); renderDetail(); initMap();
 window.DanjiFact={maskText:maskText,validateReview:validateReview,dataRating:dataRating,verdict:verdict,checkAnalysis:checkAnalysis,ui:ui,select:select};
 })();
 </script>
