@@ -21,8 +21,9 @@ textarea{resize:vertical;min-height:120px}
 svg.i{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;vertical-align:-3px}
 
 header{height:var(--hdr);display:flex;align-items:center;gap:14px;padding:0 16px;border-bottom:2px solid var(--ink);background:#fff;position:sticky;top:0;z-index:20}
-.logo{font-weight:700;font-size:19px;letter-spacing:-.3px}
-.logo small{font-weight:400;font-size:12px;color:var(--mute);margin-left:4px}
+.logo{font-weight:700;font-size:19px;letter-spacing:-.3px;color:var(--ink);text-decoration:none}
+.logo:hover{text-decoration:underline;text-underline-offset:4px}
+.logo:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
 .region{font-size:13px;color:var(--mute)}
 header .sp{flex:1}
 header button{padding:6px 10px;display:flex;gap:6px;align-items:center}
@@ -40,7 +41,7 @@ header button{padding:6px 10px;display:flex;gap:6px;align-items:center}
 .list .ad{font-size:12px;opacity:.75}
 .list .rv{float:right;font-size:11px;border:1px solid currentColor;padding:0 5px;margin-left:6px}
 .main{min-width:0}
-#map{height:320px;border-bottom:2px solid var(--ink);background:var(--soft);position:relative}
+#map{height:320px;border-bottom:2px solid var(--ink);background:var(--soft);position:relative;scroll-margin-top:var(--hdr)}
 .mapmsg{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:16px;font-size:14px;color:var(--mute)}
 .pin{width:12px;height:12px;border:2px solid var(--ink);background:#fff;border-radius:50%;cursor:pointer}
 .pin.on{width:16px;height:16px;background:var(--ink)}
@@ -48,6 +49,10 @@ header button{padding:6px 10px;display:flex;gap:6px;align-items:center}
 
 .detail{padding:22px 22px 60px;max-width:980px}
 .empty{color:var(--mute);padding:40px 0}
+.intro{margin-top:0}
+.intro p{margin:0}
+.intro p+p{margin-top:6px}
+.guide{color:var(--mute);margin:14px 0 0}
 h1.cx{font-size:24px;margin:0}
 .addr{color:var(--mute);font-size:13.5px;margin:2px 0 0}
 .warn{font-size:12.5px;border:1.5px dashed var(--ink);display:inline-block;padding:1px 8px;margin-top:6px}
@@ -144,7 +149,7 @@ dialog h3:first-child{margin-top:0;padding-top:0;border-top:0}
 </head>
 <body>
 <header>
-  <div class="logo">단지팩트<small>가칭</small></div>
+  <a class="logo" id="homeLink" href="index.html" title="처음 화면으로">단지팩트</a>
   <div class="region" id="region"></div>
   <div class="sp"></div>
   <button class="ghost" id="vaultBtn" type="button"><svg class="i" viewBox="0 0 24 24"><path d="M4 7h16v13H4z"/><path d="M8 7V4h8v3"/><path d="M9 12h6"/></svg>보관함</button>
@@ -161,7 +166,7 @@ dialog h3:first-child{margin-top:0;padding-top:0;border-top:0}
   </aside>
   <div class="main">
     <div id="map"><div class="mapmsg" id="mapMsg"></div></div>
-    <div class="detail" id="detail"><p class="empty">왼쪽 목록이나 지도에서 단지를 고른다.</p></div>
+    <div class="detail" id="detail"><p class="empty">단지 목록이나 지도에서 단지를 고른다.</p></div>
   </div>
 </div>
 
@@ -314,7 +319,7 @@ $('q').addEventListener('input',function(e){ui.q=e.target.value;renderList()});
 $('list').addEventListener('click',function(e){ var b=e.target.closest('button[data-code]'); if(b) select(b.getAttribute('data-code'),true); });
 
 /* ================= 지도 ================= */
-var map=null, kakaoP=null, pins={}, label=null;
+var map=null, kakaoP=null, pins={}, label=null, mapHome=null;
 /* 11/08: 방문자가 넣은 키가 있으면 그 키, 없으면 코드의 기본 키(KAKAO_JS_KEY) */
 function userKakaoKey(){ return memKeys.kakao||ssGet(LS.kakao)||lsGet(LS.kakao)||''; }
 function kakaoKey(){ return userKakaoKey()||KAKAO_JS_KEY; }
@@ -347,6 +352,7 @@ function drawMap(k){
   mapMsg('');
   var lat=pts.reduce(function(s,c){return s+c.lat},0)/pts.length, lng=pts.reduce(function(s,c){return s+c.lng},0)/pts.length;
   map=new k.maps.Map($('map'),{center:new k.maps.LatLng(lat,lng),level:6});
+  mapHome={lat:lat,lng:lng,level:6};   // 11/08: 로고를 누르면 이 위치로 되돌림
   pts.forEach(function(c){
     var el=document.createElement('div'); el.className='pin'; el.title=c.name; el.setAttribute('role','button'); el.setAttribute('aria-label',c.name);
     el.addEventListener('click',function(){select(c.code,false)});
@@ -366,9 +372,22 @@ function focusPin(code){
 }
 
 /* ================= 상세 ================= */
+/* 11/08: 휴대폰 폭에서는 목록에서 골라도 지도와 상세가 보이도록 지도 위쪽으로 내려 줌(이전에는 목록에서 고르면 화면이 그대로였음) */
 function select(code,fromList){
   ui.sel=code; renderList(); renderDetail(); focusPin(code);
-  if(!fromList&&window.matchMedia('(max-width:860px)').matches) $('detail').scrollIntoView({behavior:'smooth'});
+  if(window.matchMedia('(max-width:860px)').matches) $('map').scrollIntoView({behavior:'smooth',block:'start'});
+}
+/* 11/08: 로고를 누르면 처음 화면(단지 고르기 전, 검색어·관리비 기준 초기화, 지도 처음 위치)으로 */
+function goHome(){
+  ui.sel=null; ui.q=''; ui.feeRange='total'; ui.feeSeason='all';
+  $('q').value='';
+  ['setDlg','vaultDlg'].forEach(function(id){ var d=$(id); if(d.open) d.close(); });
+  renderList(); renderDetail();
+  Object.keys(pins).forEach(function(k){pins[k].classList.remove('on')});
+  if(label){ label.setMap(null); label=null; }
+  if(map&&mapHome&&window.kakao){ map.setLevel(mapHome.level); map.setCenter(new window.kakao.maps.LatLng(mapHome.lat,mapHome.lng)); }
+  $('list').scrollTop=0;
+  window.scrollTo(0,0);
 }
 function yearOf(d){ d=String(d||''); return d.length>=4?d.slice(0,4)+'년':null; }
 function renderDetail(){
@@ -399,7 +418,12 @@ function renderDetail(){
 /* 11/08: 처음 온 사람이 224곳 중 시연용 후기가 있는 단지를 바로 찾도록 첫 화면에 보여 줌 */
 function emptyHtml(){
   var codes=Object.keys(DEMO).filter(function(k){return BY[k]&&DEMO[k]&&DEMO[k].length}).sort(function(a,b){return BY[a].name.localeCompare(BY[b].name,'ko')});
-  var h='<p class="empty">왼쪽 목록이나 지도에서 단지를 고른다.</p>';
+  /* 11/08: 처음 온 사람이 서비스가 하는 일과 데이터 범위(지역)를 알 수 있게 첫 화면에 설명 */
+  var area=IS_SAMPLE?'예시 데이터(실제 단지 아님)':((DATA.meta.sido?DATA.meta.sido+' ':'')+GU+' '+CX.length+'개 단지');
+  var h='<section class="card intro"><h2>단지팩트는</h2>'+
+    '<p>다른 곳에서 읽은 아파트 거주 후기를 붙여넣으면 AI가 주차, 관리비, 교통 등 6개 항목으로 나누고, 주차와 관리비는 공공데이터와 비교해 후기가 데이터와 맞는지 보여 준다.</p>'+
+    '<p class="small">지금은 '+esc(area)+'만 볼 수 있다. 관리비는 '+esc(periodText(DATA.meta.feePeriod))+'이다.</p></section>';
+  h+='<p class="guide">단지 목록이나 지도에서 단지를 고른다.</p>';
   if(!codes.length) return h;
   return h+'<section class="card"><h2>키 없이 둘러보기</h2><p class="small" style="margin:0">아래 단지에는 시연용 후기와 미리 받아 둔 AI 분석 결과가 있다. 단지를 고른 뒤 \'시연용 후기 불러오기\'를 누르면 후기-데이터 판정을 볼 수 있다.</p>'+
     '<div class="actions">'+codes.map(function(k){return '<button type="button" class="ghost" data-demo-go="'+esc(k)+'">'+esc(BY[k].name)+' · 후기 '+DEMO[k].length+'건</button>'}).join('')+'</div></section>';
@@ -734,6 +758,10 @@ document.addEventListener('click',function(e){
   var cl=e.target.closest('[data-close]'); if(cl) cl.closest('dialog').close();
 });
 $('setBtn').addEventListener('click',function(){openSettings()});
+$('homeLink').addEventListener('click',function(e){
+  if(e.ctrlKey||e.metaKey||e.shiftKey||e.button!==0) return;   // 새 탭으로 열기는 그대로 둠
+  e.preventDefault(); goHome();
+});
 
 /* ================= 보관함 ================= */
 $('vaultBtn').addEventListener('click',renderVault);
@@ -767,7 +795,7 @@ function flash(t){ var b=$('banner'); b.hidden=false; b.textContent=t; clearTime
 $('region').textContent=(DATA.meta.sido&&!IS_SAMPLE?DATA.meta.sido+' ':'')+GU+' · 단지 '+CX.length+'곳';
 if(IS_SAMPLE){ var b=$('banner'); b.hidden=false; b.textContent='data.js가 없어 예시 데이터로 보여 준다(실제 단지 아님). collect.html로 data.js를 만들어 이 파일 옆에 둔다.'; }
 renderList(); renderDetail(); initMap();
-window.DanjiFact={maskText:maskText,validateReview:validateReview,dataRating:dataRating,verdict:verdict,checkAnalysis:checkAnalysis,ui:ui,select:select};
+window.DanjiFact={goHome:goHome,maskText:maskText,validateReview:validateReview,dataRating:dataRating,verdict:verdict,checkAnalysis:checkAnalysis,ui:ui,select:select};
 })();
 </script>
 </body>
